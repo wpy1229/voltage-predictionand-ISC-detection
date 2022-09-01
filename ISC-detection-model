@@ -128,7 +128,6 @@ def metric(pred, true):
 
 
 def adjust_learning_rate(optimizer, epoch, learning_rate, lradj):
-    # lr = args.learning_rate * (0.2 ** (epoch // 2))
     if lradj == 'type1':
         lr_adjust = {epoch: learning_rate * (0.8 ** ((epoch - 1) // 2))}
     elif lradj == 'type2':
@@ -176,7 +175,7 @@ class EarlyStopping:
 
 
 class TokenEmbedding(nn.Module):
-    def __init__(self, c_in, d_model):  # c_in default=7,d_model=512
+    def __init__(self, c_in, d_model): 
         super(TokenEmbedding, self).__init__()
         padding = 1 if torch.__version__ >= '1.5.0' else 2
         self.tokenConv = nn.Conv1d(in_channels=c_in, out_channels=d_model,
@@ -287,35 +286,33 @@ class ProbAttention(nn.Module):
         self.output_attention = output_attention  
         self.dropout = nn.Dropout(attention_dropout)
 
-    def _prob_QK(self, Q, K, sample_k, n_top):  # n_top: c*ln(L_q),sample_k=n_top=25
+    def _prob_QK(self, Q, K, sample_k, n_top):  
         B, H, L_K, E = K.shape
         _, _, L_Q, _ = Q.shape
 
-        K_expand = K.unsqueeze(-3).expand(B, H, L_Q, L_K, E)  # 此处是重复数据L_Q次，从四维变五维
-        index_sample = torch.randint(L_K, (L_Q, sample_k))  # real U = U_part(factor*ln(L_k))*L_q#生成0-L_K的维度为(96,25)的数据
+        K_expand = K.unsqueeze(-3).expand(B, H, L_Q, L_K, E) 
+        index_sample = torch.randint(L_K, (L_Q, sample_k)) 
         K_sample = K_expand[:, :, torch.arange(L_Q).unsqueeze(1), index_sample, :]
         Q_K_sample = torch.matmul(Q.unsqueeze(-2), K_sample.transpose(-2, -1)).squeeze(
-            -2)  # (batch_size,heads,seq_len,u)
+            -2) 
 
-        # find the Top_k query with sparisty measurement
-        M = Q_K_sample.max(-1)[0] - torch.div(Q_K_sample.sum(-1), L_K)  # 计算M，(batch_size,heads,seq_len)
-        M_top = M.topk(n_top, sorted=False)[1]  # (batch_size,heads,u)
+        M = Q_K_sample.max(-1)[0] - torch.div(Q_K_sample.sum(-1), L_K)  
+        M_top = M.topk(n_top, sorted=False)[1]  
 
-        # use the reduced Q to calculate Q_K
         Q_reduce = Q[torch.arange(B)[:, None, None],
                    torch.arange(H)[None, :, None],
-                   M_top, :]  # factor*ln(L_q)#(batch_size,head,u,d_model//heads)
-        Q_K = torch.matmul(Q_reduce, K.transpose(-2, -1))  # factor*ln(L_q)*L_k#(batch_size,heads,u,seq_len)
+                   M_top, :] 
+        Q_K = torch.matmul(Q_reduce, K.transpose(-2, -1))  
 
         return Q_K, M_top
 
     def _get_initial_context(self, V, L_Q):
         B, H, L_V, D = V.shape
         if not self.mask_flag:
-            V_sum = V.mean(dim=-2)  # (batch_size,heads,d_model//heads)
+            V_sum = V.mean(dim=-2)  
             contex = V_sum.unsqueeze(-2).expand(B, H, L_Q, V_sum.shape[-1]).clone()
         else:  # use mask
-            assert (L_Q == L_V)  # requires that L_Q == L_V, i.e. for self-attention only
+            assert (L_Q == L_V) 
             contex = V.cumsum(dim=-2)
         return contex
 
@@ -346,7 +343,7 @@ class ProbAttention(nn.Module):
         keys = keys.transpose(2, 1)
         values = values.transpose(2, 1)
 
-        U_part = self.factor * np.ceil(np.log(L_K)).astype('int').item()  # c*ln(L_k)==25
+        U_part = self.factor * np.ceil(np.log(L_K)).astype('int').item()  
         u = self.factor * np.ceil(np.log(L_Q)).astype('int').item()  
 
         U_part = U_part if U_part < L_K else L_K  # 25
@@ -359,7 +356,7 @@ class ProbAttention(nn.Module):
         context = self._get_initial_context(values, L_Q)  
         context, attn = self._update_context(context, values, scores_top, index, L_Q, attn_mask)
 
-        return context.transpose(2, 1).contiguous(), attn  # (batch_size,seq_len,heads,d_model//heads)
+        return context.transpose(2, 1).contiguous(), attn 
 
 
 class AttentionLayer(nn.Module):
@@ -395,7 +392,7 @@ class AttentionLayer(nn.Module):
         )  
         if self.mix:  
             out = out.transpose(2, 1).contiguous()  
-        out = out.view(B, L, -1)  # (batch_size,seq_len,d_model)
+        out = out.view(B, L, -1) 
 
         return self.out_projection(out), attn  
 
@@ -417,7 +414,6 @@ class ConvLayer(nn.Module):
         x = self.downConv(x.permute(0, 2, 1))
         x = self.norm(x)
         x = self.activation(x)
-        # x = self.maxPool(x)
         x = x.transpose(1, 2)
         return x
 
@@ -426,7 +422,7 @@ class EncoderLayer(nn.Module):
     def __init__(self, attention, d_model, d_ff=None, dropout=0.1, activation="relu"):
         super(EncoderLayer, self).__init__()
         d_ff = d_ff or 4 * d_model
-        self.attention = attention  # attention_layer
+        self.attention = attention  
         self.conv1 = nn.Conv1d(in_channels=d_model, out_channels=d_ff, kernel_size=1)
         self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1)
         self.norm1 = nn.LayerNorm(d_model)
@@ -435,20 +431,16 @@ class EncoderLayer(nn.Module):
         self.activation = F.relu if activation == "relu" else F.gelu
 
     def forward(self, x, attn_mask=None):
-        # x [B, L, D]
-        # x = x + self.dropout(self.attention(
-        #     x, x, x,
-        #     attn_mask = attn_mask
-        # ))
+        
         new_x, attn = self.attention(
             x, x, x,
             attn_mask=attn_mask
-        )  # (batch_size,seq_len,d_model),atten=None
+        ) 
         x = x + self.dropout(new_x) 
 
         y = x = self.norm1(x) 
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
-        y = self.dropout(self.conv2(y).transpose(-1, 1))  # (batch_size,seq_len,d_model)
+        y = self.dropout(self.conv2(y).transpose(-1, 1))  
 
         return self.norm2(x + y), attn
 
@@ -485,7 +477,6 @@ class EncoderStack(nn.Module):
         self.inp_lens = inp_lens
 
     def forward(self, x, attn_mask=None):
-        # x [B, L, D]
         x_stack = []
         attns = []
         for i_len, encoder in zip(self.inp_lens, self.encoders):  
@@ -510,7 +501,7 @@ class DecoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
         self.norm3 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
-        self.activation = F.relu if activation == "relu" else F.gelu  # 默认gelu
+        self.activation = F.relu if activation == "relu" else F.gelu 
 
     def forward(self, x, cross, x_mask=None, cross_mask=None):
         x = x + self.dropout(self.self_attention(
@@ -537,7 +528,7 @@ class Decoder(nn.Module):
         self.layers = nn.ModuleList(layers)
         self.norm = norm_layer
 
-    def forward(self, x, cross, x_mask=None, cross_mask=None):  # cross=enc_out
+    def forward(self, x, cross, x_mask=None, cross_mask=None):  
         for layer in self.layers:
             x = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
 
@@ -582,9 +573,9 @@ class Trans(nn.Module):
     def forward(self, x, enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
         enc_out = self.enc_embedding(x)
         enc_out, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
-        dec_out = F.tanh(self.projection(enc_out))  # F.tanh(self.projection(enc_out))
+        dec_out = F.tanh(self.projection(enc_out))  
         dec_out = self.flatten(dec_out)
-        out = F.sigmoid(self.projection2(dec_out))  # F.tanh(self.projection2(dec_out))
+        out = F.sigmoid(self.projection2(dec_out)) 
         return out
 
 
