@@ -1,2 +1,2 @@
 # voltage-predictionand-ISC-detection
-data and code for the paper "Internal short circuit early detection and power prediction of lithium-ion batteries using deep learning"
+data and code for the paper "Long-sequence voltage series forecasting for internal short circuit early detection of Lithium-ion batteries"
